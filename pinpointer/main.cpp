@@ -7,28 +7,34 @@
 #include <avr/io.h>
 #include <avr/eeprom.h>
 #include <util/delay.h>
+#include <avr/interrupt.h>
 
-int  base_threshold = 0;
-int  sens_threshold = 1;     // чем больше зачение, тем стабильнее, но меньше чувствительность
-bool flag_button = false;
+uint16_t  base_threshold = 0;
+uint16_t  sens_threshold = 1;     // чем больше зачение, тем стабильнее, но меньше чувствительность
+//bool flag_button = false;
 bool flag_eeprom = false;
-int  adc_f;
+uint16_t  adc_f;
+uint16_t  tone = 25;
 
-void Led(const bool x);
+void Led(const bool& x);
 bool Button();
 void adc_setup();
-int  adc_read();
+uint16_t  adc_read();
 void pwm(const int& x);
 void setup_port();
-void signal_out(const int& i);
-void threshold(int& x, const int& y);
+void signal_out(const uint16_t& i);
+void threshold(uint16_t& x, const uint16_t& y);
 void action();
+void indication(const int& tone, const int& times);
+void my_delay_ms(int ms);
+void interrupt_setup();
 
 
 int main(void)
 {
 	setup_port();
 	adc_setup();
+	interrupt_setup();
 
     while (1) 
     {
@@ -39,13 +45,13 @@ int main(void)
 			flag_eeprom = false;
 		}
 		adc_f = adc_read();
-		action();
+		//action();
 		signal_out(adc_f);
     }
 }
 
 // management led
-void Led(const bool x)
+void Led(const bool& x)
 {	
 	if (x)
 	{
@@ -78,7 +84,7 @@ void adc_setup ()
 	ADCSRA |= (1 << ADEN);                                // enable ADC
 }
 
-int adc_read ()
+uint16_t adc_read ()
 {
 	ADCSRA |= (1 << ADSC);
 	while (ADCSRA & (1 << ADSC));
@@ -118,28 +124,26 @@ void setup_port()
 	PORTB |=  (1 << BUTTON);
 }
 
-void signal_out(const int& i)
+void signal_out(const uint16_t& i)
 {
 	// 10 this ~125mV     100 this ~1150 mV  
-	if ((i >= 0) && (i < base_threshold))
+	if (/*(i >= 0) &&*/ (i <= base_threshold))
 	{		
-		if ((i >= 0) && (i < 30))
+		if (/*(i >= 0) &&*/ (i < 30))
 		{
-			Led(true);
-			pwm(10);
+			indication(tone, 1);
 		}
-		if ((i >= 30) && (i < 60))
+		if ((i >= 30) && (i < 50))
 		{
-			Led(true);
-			pwm(15);
+			indication(tone, 10);
 		}
-		if ((i >= 60) && (i < 90))
+		if ((i >= 50) && (i < 70))
 		{
-			pwm(20);
+			indication(tone, 20);
 		}
-		if (i >= 90)
+		if (i >= 70)
 		{
-			pwm(25);
+			indication(tone, 50);
 		}
 		
 	}
@@ -151,23 +155,60 @@ void signal_out(const int& i)
 	}
 }
 
-void threshold(int& x /* input val base*/, const int& y /* -threshold */) // sensitivity
+void threshold(uint16_t& x /* input val base*/, const uint16_t& y /* -threshold */) // sensitivity
 {
-	x = x - y;
-	eeprom_write_word(0 , x);
-	_delay_ms(10);
-	flag_eeprom = true;
+	if (x >= y)
+	{
+		x = x - y;
+		eeprom_write_word(0 , x);
+		_delay_ms(10);
+		flag_eeprom = true;
+	}
 }
 
-void action()
+// void action()
+// {
+// 	if (Button() && !flag_button)
+// 	{
+// 		flag_button = true;
+// 		threshold(adc_f, sens_threshold);
+// 	}
+// 	if (!Button() && flag_button)
+// 	{
+// 		flag_button = false;
+// 	}
+// }
+
+void indication(const int& tone, const int& times)
 {
-	if (Button() && !flag_button)
+	Led(true);
+	pwm(tone);
+	my_delay_ms(times);
+	Led(false);
+	pwm(0);
+	my_delay_ms(times);
+}
+
+void my_delay_ms(int ms)
+{
+	while (0 < ms)
 	{
-		flag_button = true;
-		threshold(adc_f, sens_threshold);
+		_delay_ms(1);
+		--ms;
 	}
-	if (!Button() && flag_button)
+}
+
+void interrupt_setup()
+{
+	GIMSK |= (1 << PCIE);
+	PCMSK |= (1 << PCINT2);
+	sei();
+}
+
+ISR(PCINT0_vect) // press button
+{
+	if (!((PINB >> BUTTON) & 1))
 	{
-		flag_button = false;
+		threshold(adc_f, sens_threshold);
 	}
 }
