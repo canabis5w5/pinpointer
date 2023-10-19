@@ -1,4 +1,4 @@
-#define F_CPU     1000000
+#define F_CPU     9600000
 #define BUZZER    PB0
 #define LED       PB3
 #define BUTTON    PB2
@@ -9,18 +9,19 @@
 #include <util/delay.h>
 
 int  base_threshold = 0;
-const int  sens_threshold = 2;     // чем больше зачение, тем стабильнее, но меньше чувствительность
+int  sens_threshold = 1;     // чем больше зачение, тем стабильнее, но меньше чувствительность
 bool flag_button = false;
+bool flag_eeprom = false;
 int  adc_f;
 
-void Led(bool x);
+void Led(const bool x);
 bool Button();
 void adc_setup();
 int  adc_read();
 void pwm(const int& x);
 void setup_port();
-void signal_out(int i);
-void threshold(int x, const int& y);
+void signal_out(const int& i);
+void threshold(int& x, const int& y);
 void action();
 
 
@@ -31,15 +32,20 @@ int main(void)
 
     while (1) 
     {
-		base_threshold = eeprom_read_word(0);
+		if (flag_eeprom)
+		{
+			base_threshold = eeprom_read_word(0);
+			_delay_ms(10);
+			flag_eeprom = false;
+		}
 		adc_f = adc_read();
 		action();
 		signal_out(adc_f);
     }
 }
 
-// управление светодиодом
-void Led(bool x)
+// management led
+void Led(const bool x)
 {	
 	if (x)
 	{
@@ -51,7 +57,7 @@ void Led(bool x)
 	}
 }
 
-// нажатие кнопки
+// push button
 bool Button()
 {
 	bool result = false;
@@ -66,10 +72,10 @@ bool Button()
 
 void adc_setup ()
 {
-	ADMUX  |= (1 << ADLAR) | (1 << MUX1); // input PB4 / ADC2
+	ADMUX  |= (1 << ADLAR) | (1 << MUX1);                 // input PB4 / ADC2
 	ADCSRB |= (1 << ACME);
-	ADCSRA |= (1 << ADPS1); // делитель 4
-	ADCSRA |= (1 << ADEN);  // enable ADC
+	ADCSRA |= (1 << ADPS2) | (1 << ADPS1) | (1 << ADPS0); // div 128
+	ADCSRA |= (1 << ADEN);                                // enable ADC
 }
 
 int adc_read ()
@@ -97,7 +103,7 @@ void pwm(const int& x)
 	// частота сигнала = F_CPU / 2 * делитель * (OCR0A + 1)
 	TCCR0A |= (1 << WGM01);
 	TCCR0A |= (1 << COM0A0);
-	TCCR0B |= (1 << CS00);
+	TCCR0B |= (1 << CS01) | (1 << CS00);
 	OCR0A = x;
 }
 
@@ -112,32 +118,45 @@ void setup_port()
 	PORTB |=  (1 << BUTTON);
 }
 
-void signal_out(int i)
+void signal_out(const int& i)
 {
-	// 10 это ~125mV     100 это ~1150 mV  
-	if ((i > 0) && (i < base_threshold))
-	{
-		Led(true);
-		pwm(i + 256 - base_threshold -2);
-		_delay_ms(15);
-		pwm(i + 256 - base_threshold -200);
-		_delay_ms(5);
-		pwm(i + 256 - base_threshold -2);
-		_delay_ms(10);
-		pwm(i + 256 - base_threshold -200);
+	// 10 this ~125mV     100 this ~1150 mV  
+	if ((i >= 0) && (i < base_threshold))
+	{		
+		if ((i >= 0) && (i < 30))
+		{
+			Led(true);
+			pwm(10);
+		}
+		if ((i >= 30) && (i < 60))
+		{
+			Led(true);
+			pwm(15);
+		}
+		if ((i >= 60) && (i < 90))
+		{
+			pwm(20);
+		}
+		if (i >= 90)
+		{
+			pwm(25);
+		}
+		
 	}
 	else 
 	{
-		// выключаем led и buzzer
+		// off led and buzzer
 		Led(false);
-		pwm(256);
+		pwm(0);
 	}
 }
 
-void threshold(int x /* input val base*/, const int& y /* -threshold */) // чувствительность
+void threshold(int& x /* input val base*/, const int& y /* -threshold */) // sensitivity
 {
 	x = x - y;
 	eeprom_write_word(0 , x);
+	_delay_ms(10);
+	flag_eeprom = true;
 }
 
 void action()
