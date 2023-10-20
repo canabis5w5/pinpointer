@@ -9,25 +9,24 @@
 #include <util/delay.h>
 #include <avr/interrupt.h>
 
-uint16_t  base_threshold = 0;
-uint16_t  sens_threshold = 1;     // чем больше зачение, тем стабильнее, но меньше чувствительность
-//bool flag_button = false;
+uint8_t base_threshold = 0;
+uint8_t  sens_threshold = 1;     // чем больше зачение, тем стабильнее, но меньше чувствительность
 bool flag_eeprom = false;
-uint16_t  adc_f;
-uint16_t  tone = 25;
+uint8_t  adc_f;
+uint8_t  tone = 25;
 
 void Led(const bool& x);
-bool Button();
 void adc_setup();
-uint16_t  adc_read();
-void pwm(const int& x);
+uint8_t  adc_read();
+void pwm(const uint8_t& x);
 void setup_port();
-void signal_out(const uint16_t& i);
-void threshold(uint16_t& x, const uint16_t& y);
+void signal_out(const uint8_t& i);
+void threshold(uint8_t& x, const uint8_t& y);
 void action();
-void indication(const int& tone, const int& times);
+void indication(const uint8_t& tone, const int& times);
 void my_delay_ms(int ms);
 void interrupt_setup();
+void read_eeprom(bool flag_eeprom);
 
 
 int main(void)
@@ -35,17 +34,12 @@ int main(void)
 	setup_port();
 	adc_setup();
 	interrupt_setup();
+	indication(tone, 50);
 
     while (1) 
     {
-		if (flag_eeprom)
-		{
-			base_threshold = eeprom_read_word(0);
-			_delay_ms(10);
-			flag_eeprom = false;
-		}
+		read_eeprom(flag_eeprom);
 		adc_f = adc_read();
-		//action();
 		signal_out(adc_f);
     }
 }
@@ -63,19 +57,6 @@ void Led(const bool& x)
 	}
 }
 
-// push button
-bool Button()
-{
-	bool result = false;
-	
-	if (PINB == 2)
-	{
-		result = true;
-	}
-	
-	return result;
-}
-
 void adc_setup ()
 {
 	ADMUX  |= (1 << ADLAR) | (1 << MUX1);                 // input PB4 / ADC2
@@ -84,14 +65,14 @@ void adc_setup ()
 	ADCSRA |= (1 << ADEN);                                // enable ADC
 }
 
-uint16_t adc_read ()
+uint8_t adc_read ()
 {
 	ADCSRA |= (1 << ADSC);
 	while (ADCSRA & (1 << ADSC));
 	return ADCH;
 }
 
-void pwm(const int& x)
+void pwm(const uint8_t& x)
 {
 	// настройка тактирования
 	// TCCR0B |= (1 << CS00);               // без делителя
@@ -124,7 +105,7 @@ void setup_port()
 	PORTB |=  (1 << BUTTON);
 }
 
-void signal_out(const uint16_t& i)
+void signal_out(const uint8_t& i)
 {
 	// 10 this ~125mV     100 this ~1150 mV  
 	if (/*(i >= 0) &&*/ (i <= base_threshold))
@@ -133,15 +114,15 @@ void signal_out(const uint16_t& i)
 		{
 			indication(tone, 1);
 		}
-		if ((i >= 30) && (i < 50))
+		else if ((i >= 30) && (i < 50))
 		{
 			indication(tone, 10);
 		}
-		if ((i >= 50) && (i < 70))
+		else if ((i >= 50) && (i < 70))
 		{
 			indication(tone, 20);
 		}
-		if (i >= 70)
+		else if (i >= 70)
 		{
 			indication(tone, 50);
 		}
@@ -155,31 +136,26 @@ void signal_out(const uint16_t& i)
 	}
 }
 
-void threshold(uint16_t& x /* input val base*/, const uint16_t& y /* -threshold */) // sensitivity
+void threshold(uint8_t& x /* input val base*/, const uint8_t& y /* -threshold */) // sensitivity
 {
 	if (x >= y)
 	{
-		x = x - y;
-		eeprom_write_word(0 , x);
-		_delay_ms(10);
+		x -= y;
+		eeprom_write_byte(0 , x);
 		flag_eeprom = true;
 	}
 }
 
-// void action()
-// {
-// 	if (Button() && !flag_button)
-// 	{
-// 		flag_button = true;
-// 		threshold(adc_f, sens_threshold);
-// 	}
-// 	if (!Button() && flag_button)
-// 	{
-// 		flag_button = false;
-// 	}
-// }
+void read_eeprom(bool flag_eeprom)
+{	
+	if (flag_eeprom)
+	{
+		base_threshold = eeprom_read_byte(0);
+		flag_eeprom = !flag_eeprom;
+	}
+}
 
-void indication(const int& tone, const int& times)
+void indication(const uint8_t& tone, const int& times)
 {
 	Led(true);
 	pwm(tone);
@@ -205,7 +181,7 @@ void interrupt_setup()
 	sei();
 }
 
-ISR(PCINT0_vect) // press button
+ISR(PCINT0_vect) // event for press button
 {
 	if (!((PINB >> BUTTON) & 1))
 	{
