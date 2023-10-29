@@ -12,7 +12,7 @@
 uint8_t base_threshold = 0;
 uint8_t  sens_threshold = 1;     // чем больше зачение, тем стабильнее, но меньше чувствительность
 bool flag_eeprom = false;
-uint8_t  adc_f;
+//uint8_t  adc_f;
 uint8_t  tone = 25;
 
 void Led(const bool& x);
@@ -21,7 +21,7 @@ uint8_t  adc_read();
 void pwm(const uint8_t& x);
 void setup_port();
 void signal_out(const uint8_t& i);
-void threshold(uint8_t& x, const uint8_t& y);
+void threshold(uint8_t x, uint8_t& y);
 void action();
 void indication(const uint8_t& tone, const int& times);
 void my_delay_ms(int ms);
@@ -31,16 +31,19 @@ void read_eeprom(bool flag_eeprom);
 
 int main(void)
 {
+	_delay_ms(5000);
 	setup_port();
 	adc_setup();
 	interrupt_setup();
 	indication(tone, 50);
+	//adc_f = adc_read();
+	threshold(adc_read(), sens_threshold);
 
     while (1) 
     {
 		read_eeprom(flag_eeprom);
-		adc_f = adc_read();
-		signal_out(adc_f);
+		//adc_f = adc_read();
+		signal_out(adc_read());
     }
 }
 
@@ -136,7 +139,7 @@ void signal_out(const uint8_t& i)
 	}
 }
 
-void threshold(uint8_t& x /* input val base*/, const uint8_t& y /* -threshold */) // sensitivity
+void threshold(uint8_t x /* input val base*/, uint8_t& y /* -threshold */) // sensitivity
 {
 	if (x >= y)
 	{
@@ -185,6 +188,6 @@ ISR(PCINT0_vect) // event for press button
 {
 	if (!((PINB >> BUTTON) & 1))
 	{
-		threshold(adc_f, sens_threshold);
+		threshold(adc_read(), sens_threshold);
 	}
 }
